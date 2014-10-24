@@ -1,0 +1,76 @@
+(in-package :iot)
+
+(defstruct search-queue-node
+  state
+  time)
+
+(defstruct search-hash-node
+  actions
+  queue-index
+  time)
+
+(defun search-queue-key (node &optional new-time)
+  (if new-time
+      (setf (search-queue-node-time node) new-time)
+      (search-queue-node-time node)))
+
+(defun search-goal-p (state)
+  (and (endp (set-difference *technologies* (state-techs state)))
+       (iterate (for achievement in *achievements*)
+                (always (if (eql :all (achievement-investment achievement))
+                            (<= (achievement-level achievement)
+                                (state-min-level state))
+                            (<= (achievement-level achievement)
+                                (state-investment-level state (achievement-investment achievement))))))))
+
+(defun run-search (initial-state goalp max-time-left)
+  (multiple-value-bind (queue hash) (search-init initial-state)
+    (iterate (for r = (search-step queue hash goalp max-time-left))
+             (finding r such-that r))))
+
+(defun search-init (state)
+  (let ((queue (make-instance 'fibonacci-heap :key #'search-queue-key))
+        (hash (make-hash-table :test 'equalp)))
+    (multiple-value-bind (dup-state heap-node)
+        (add-to-heap queue (make-search-queue-node :state state :time 0))
+      (declare (ignore dup-state))
+      (setf (gethash state hash) (make-search-hash-node :actions nil :queue-index heap-node :time 0)))
+    (values queue hash)))
+
+(let ((last-hash nil)
+      (last-count 1))
+  (defun search-step (queue hash goalp max-time-left)
+    (let* ((qnode (pop-heap queue))
+           (state (search-queue-node-state qnode))
+           (time (search-hash-node-time (gethash state hash)))
+           (actions (search-hash-node-actions (gethash state hash)))
+           (time-limit (+ time (funcall max-time-left state))))
+      (remhash state hash)
+      (format t "==========~%")
+      (format t "time: ~A~%" (fs time))
+      (format t "~A~%~A~%" queue hash)
+      (print-state-short state t)
+      (when (or (not (eql hash last-hash))
+                (< last-count (hash-table-count hash)))
+        (setf last-hash hash)
+        (setf last-count (hash-table-count hash))
+        (iterate (for (sp n) in-hashtable hash)
+                 (when (< time-limit (search-hash-node-time n))
+                   (delete-from-heap queue (search-hash-node-queue-index n))
+                   (remhash sp hash))))
+      (if (funcall goalp state)
+          (reverse actions)
+          (iterate (for a in (next-actions state))
+                   (for sp = (action-apply a state))
+                   (for tp = (+ time (action-time a state)))
+                   (for asp = (cons a actions))
+                   (for (values hnode found) = (gethash sp hash))
+                   (if found
+                       (when (< tp (search-hash-node-time hnode))
+                         (decrease-key queue (search-hash-node-queue-index hnode) tp)
+                         (setf (search-hash-node-time hnode) tp)
+                         (setf (search-hash-node-actions hnode) asp))
+                       (multiple-value-bind (qnp queue-index)
+                           (add-to-heap queue (make-search-queue-node :state sp :time tp))
+                         (declare (ignore qnp))
+                         (setf (gethash sp hash) (make-search-hash-node :actions asp :time tp :queue-index queue-index)))))))))
