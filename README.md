@@ -10,3 +10,6 @@ modeling things for the Android game [Idle Oil Tycoon][game] by
 
 There's not a lot of documentation, but you're welcome to do what you can
 with all of this.
+
+Note that all calculations here are done with bigints.  The game probably
+uses double-floats.  I like the precision of the bigints, though.
