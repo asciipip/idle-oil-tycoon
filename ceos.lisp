@@ -3,12 +3,12 @@
 (defun ceo-efficiency (level)
   (/ level (1+ level)))
 
-(defun investment-initial-ceo-cost (investment)
-  (* 10 (investment-initial-cost investment)))
+(defun prop-initial-ceo-cost (property-or-key)
+  (* 10 (prop-initial-cost property-or-key)))
 
-(defun investment-ceo-cost-at (investment level &optional (count 1))
+(defun prop-ceo-cost-at (property-or-key level &optional (count 1))
   (if (= 1 count)
-      (* (investment-initial-ceo-cost investment)
+      (* (prop-initial-ceo-cost property-or-key)
          (expt 2 (expt level 2)))
-      (+ (investment-ceo-cost-at investment level 1)
-         (investment-ceo-cost-at investment (1+ level) (1- count)))))
+      (+ (prop-ceo-cost-at property-or-key level 1)
+         (prop-ceo-cost-at property-or-key (1+ level) (1- count)))))

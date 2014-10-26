@@ -17,11 +17,11 @@
 (defun search-goal-p (state)
   (and (endp (set-difference *technologies* (state-techs state)))
        (iterate (for achievement in *achievements*)
-                (always (if (eql :all (achievement-investment achievement))
+                (always (if (eql :all (achievement-property achievement))
                             (<= (achievement-level achievement)
                                 (state-min-level state))
                             (<= (achievement-level achievement)
-                                (state-investment-level state (achievement-investment achievement))))))))
+                                (state-prop-level state (achievement-property achievement))))))))
 
 (defun run-search (initial-state goalp max-time-left)
   (multiple-value-bind (queue hash) (search-init initial-state)

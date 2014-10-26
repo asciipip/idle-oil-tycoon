@@ -15,23 +15,21 @@
         (format t "====================~%")
         (print-state initial-state t))))
 
-(defclass action-investment (action)
-  ((investment :accessor action-investment :initarg :investment)
+(defclass action-property (action)
+  ((property :accessor action-prop :initarg :prop)
    (qty :accessor action-qty :initarg :qty)))
 
-(defmethod action-cost ((action action-investment) state)
-  (let* ((ikey (action-investment action))
-         (investment (gethash ikey *investments*)))
-    (investment-cost-at investment (state-investment-level state ikey) (action-qty action))))
+(defmethod action-cost ((action action-property) state)
+  (let ((prop (action-prop action)))
+    (prop-cost-at prop (state-prop-level state prop) (action-qty action))))
 
 (defclass action-ceo (action)
-  ((investment :accessor action-investment :initarg :investment)
+  ((property :accessor action-prop :initarg :prop)
    (qty :accessor action-qty :initarg :qty :initform 1)))
 
 (defmethod action-cost ((action action-ceo) state)
-  (let* ((ikey (action-investment action))
-         (investment (gethash ikey *investments*)))
-    (investment-ceo-cost-at investment (state-ceo-level state ikey) (action-qty action))))
+  (let ((prop (action-prop action)))
+    (prop-ceo-cost-at prop (state-ceo-level state prop) (action-qty action))))
 
 (defclass action-tech (action)
   ((technology :accessor action-tech :initarg :tech)))
@@ -40,12 +38,12 @@
   (tech-cost (action-tech action)))
 
 (defclass action-bootstrap (action)
-  ((investment :accessor action-investment :initarg :investment)))
+  ((property :accessor action-prop :initarg :prop)))
 
 (defmethod action-cost ((action action-bootstrap) state)
-  (let ((investment (gethash (action-investment action) *investments*)))
-    (+ (investment-cost-at investment 0 10)
-       (investment-ceo-cost-at investment 0))))
+  (let ((prop (action-prop action)))
+    (+ (prop-cost-at prop 0 10)
+       (prop-ceo-cost-at prop 0))))
 
 (defun action-time (action state)
   (/ (action-cost action state) (state-pps state)))
@@ -57,24 +55,24 @@
         (format nil "~A - in ~A" base (fs time)))
       (call-next-method)))
 
-(defmethod action-desc ((action action-investment) &optional (state nil))
+(defmethod action-desc ((action action-property) &optional (state nil))
   (let ((base (format nil "Invest: +~A ~A"
                       (action-qty action)
-                      (investment-name (gethash (action-investment action) *investments*)))))
+                      (full-prop-name (action-prop action)))))
     (if state
         (format nil "~A for $~A (~A)" base
                 (f (action-cost action state))
-                (+ (action-qty action) (state-investment-level state (action-investment action))))
+                (+ (action-qty action) (state-prop-level state (action-prop action))))
         base)))
 
 (defmethod action-desc ((action action-ceo) &optional (state nil))
   (let ((base (format nil "CEO: +~A ~A"
                       (action-qty action)
-                      (investment-name (gethash (action-investment action) *investments*)))))
+                      (full-prop-name (action-prop action)))))
     (if state
         (format nil "~A for $~A (~A)" base
                 (f (action-cost action state))
-                (+ (action-qty action) (state-ceo-level state (action-investment action))))
+                (+ (action-qty action) (state-ceo-level state (action-prop action))))
         base)))
 
 (defmethod action-desc ((action action-tech) &optional state)
@@ -84,58 +82,58 @@
 
 (defmethod action-desc ((action action-bootstrap) &optional state)
   (format nil "Bootstrap: ~A for $~A"
-          (investment-name (gethash (action-investment action) *investments*))
+          (full-prop-name (action-prop action))
           (f (action-cost action state))))
 
-(defmethod action-apply ((action action-investment) state)
-  (state-add-investment state (action-investment action) (action-qty action)))
+(defmethod action-apply ((action action-property) state)
+  (state-add-prop state (action-prop action) (action-qty action)))
 
 (defmethod action-apply ((action action-ceo) state)
-  (state-add-ceo state (action-investment action) (action-qty action)))
+  (state-add-ceo state (action-prop action) (action-qty action)))
 
 (defmethod action-apply ((action action-tech) state)
   (state-add-tech state (action-tech action)))
 
 (defmethod action-apply ((action action-bootstrap) state)
-  (let ((ikey (action-investment action)))
-    (state-add-ceo (state-add-investment state ikey 10) ikey)))
+  (let ((prop (action-prop action)))
+    (state-add-ceo (state-add-prop state prop 10) prop)))
 
 (defmethod action-group-sort (a1 a2)
   (string< (symbol-name (class-name (class-of a1)))
            (symbol-name (class-name (class-of a2)))))
 
-(defmethod action-group-sort ((a1 action-investment) (a2 action-investment))
-  (< (position (action-investment a1) *investment-keys*)
-     (position (action-investment a2) *investment-keys*)))
+(defmethod action-group-sort ((a1 action-property) (a2 action-property))
+  (< (position (prop-key (action-prop a1)) *property-keys*)
+     (position (prop-key (action-prop a2)) *property-keys*)))
 
 (defmethod action-group-sort ((a1 action-ceo) (a2 action-ceo))
-  (< (position (action-investment a1) *investment-keys*)
-     (position (action-investment a2) *investment-keys*)))
+  (< (position (prop-key (action-prop a1)) *property-keys*)
+     (position (prop-key (action-prop a2)) *property-keys*)))
 
 (defmethod action-group-sort ((a1 action-tech) (a2 action-tech))
   (< (action-cost a1 nil)
      (action-cost a2 nil)))
 
-(defun next-actions (state &optional (invest-inc 10) one-shot)
-  (let ((buy-investments (iterate (for (ikey investment) in-hashtable *investments*)
-                                  (for qty = invest-inc)
-                                  (collecting (make-instance 'action-investment :qty qty :investment ikey))))
-        (improve-ceos (iterate (for (ikey investment) in-hashtable *investments*)
-                               (for cur-level = (state-ceo-level state ikey))
-                               (collecting (make-instance 'action-ceo :investment ikey))))
+(defun next-actions (state &optional (prop-inc 10) one-shot)
+  (let ((buy-properties (iterate (for-property prop)
+                                 (for qty = prop-inc)
+                                 (collecting (make-instance 'action-property :qty qty :prop prop))))
+        (improve-ceos (iterate (for-property prop)
+                               (for cur-level = (state-ceo-level state prop))
+                               (collecting (make-instance 'action-ceo :prop prop))))
         (buy-techs (iterate (for tech in (set-difference *technologies* (state-techs state)))
                             (collecting (make-instance 'action-tech :tech tech))))
-        (buy-max-investments (iterate (for (ikey investment) in-hashtable *investments*)
-                                      (for next-achievement-level = (next-achievement-level (state-investment-level state ikey)))
-                                      (when next-achievement-level
-                                        (for qty = (- next-achievement-level (state-investment-level state ikey)))
-                                        (when (/= qty invest-inc)
-                                          (collecting (make-instance 'action-investment :qty qty :investment ikey))))))
-        (bootstrap (iterate (for (ikey investment) in-hashtable *investments*)
-                            (when (zerop (state-investment-level state ikey))
-                              (collecting (make-instance 'action-bootstrap :investment ikey))))))
-    (append buy-investments improve-ceos buy-techs
-            (when one-shot (append bootstrap buy-max-investments)))))
+        (buy-max-props (iterate (for-property prop)
+                                (for next-achievement-level = (next-achievement-level (state-prop-level state prop)))
+                                (when next-achievement-level
+                                  (for qty = (- next-achievement-level (state-prop-level state prop)))
+                                  (when (/= qty prop-inc)
+                                    (collecting (make-instance 'action-property :qty qty :prop prop))))))
+        (bootstrap (iterate (for-property prop)
+                            (when (zerop (state-prop-level state prop))
+                              (collecting (make-instance 'action-bootstrap :prop prop))))))
+    (append buy-properties improve-ceos buy-techs
+            (when one-shot (append bootstrap buy-max-props)))))
 
 (defun action-less-than (state a b)
   (let ((pps (state-pps state)))
@@ -165,16 +163,16 @@
 (defmethod action-combine (action1 action2)
   nil)
 
-(defmethod action-combine ((action1 action-investment) (action2 action-investment))
-  (when (eql (action-investment action1) (action-investment action2))
-    (make-instance 'action-investment
-                   :investment (action-investment action1)
+(defmethod action-combine ((action1 action-property) (action2 action-property))
+  (when (equal (action-prop action1) (action-prop action2))
+    (make-instance 'action-property
+                   :prop (action-prop action1)
                    :qty (+ (action-qty action1) (action-qty action2)))))
 
 (defmethod action-combine ((a1 action-ceo) (a2 action-ceo))
-  (when (eql (action-investment a1) (action-investment a2))
+  (when (eql (action-prop a1) (action-prop a2))
     (make-instance 'action-ceo
-                   :investment (action-investment a1)
+                   :prop (action-prop a1)
                    :qty (+ (action-qty a1) (action-qty a2)))))
 
 (defun consolidate-actions (actions)
